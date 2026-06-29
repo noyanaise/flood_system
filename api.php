@@ -29,7 +29,7 @@ header("Access-Control-Allow-Headers: Content-Type");
 
 // Database Configuration using Railway High-Speed Internal Variables
 $host = $_ENV['MYSQLHOST'] ?? 'mysql.railway.internal';
-$db   = $_ENV['MYSQLDATABASE'] ?? 'flood_system';
+$db   = $_ENV['MYSQLDATABASE'] ?? 'railway';
 $user = $_ENV['MYSQLUSER'] ?? 'root';
 $pass = $_ENV['MYSQLPASSWORD'] ?? 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; 
 $port = $_ENV['MYSQLPORT'] ?? '3306'; 
