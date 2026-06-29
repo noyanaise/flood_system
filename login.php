@@ -105,14 +105,13 @@ if (isset($_SESSION['user_role'])) {
 // ========================================================
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $host = 'junction.proxy.rlwy.net';
-$db   = 'railway';
-$user = 'root';
-$pass = 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; // Click the copy button next to MYSQLPASSWORD on your screen and paste it here
-$port = '39103';     // Copy your 5-digit MYSQLPORT number and paste it here
-$charset = 'utf8mb4';
+    $db   = 'railway';
+    $user = 'root';
+    $pass = 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; 
+    $port = '39103';     
+    $charset = 'utf8mb4';
 
-// Updated DSN string to include the custom Railway port
-$dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
+    $dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
 
     $username = trim($_POST['username'] ?? '');
     $password = trim($_POST['password'] ?? '');
@@ -122,60 +121,46 @@ $dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
         exit;
     }
 
-    ttry {
-    $pdo = new PDO($dsn, $user, $pass, [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
-        PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
-        
-        // CRITICAL FIXES FOR RAILWAY ALIVE SIGNALS:
-        PDO::ATTR_TIMEOUT            => 30, // Wait up to 30 seconds for the database response
-    ]);
-} catch (PDOException $e) {
-    // If it's an API route, reply in clean JSON format
-    if (isset($_GET['action']) || basename($_SERVER['PHP_SELF']) === 'api.php') {
-        header("Content-Type: application/json");
-        echo json_encode(["error" => "Database connection failed: " . $e->getMessage()]);
-    } else {
-        // Standard user redirection or system print block
-        die("Database Connection Error: " . $e->getMessage());
-    }
-    exit;
-}
+    try {
+        $pdo = new PDO($dsn, $user, $pass, [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
+            PDO::ATTR_TIMEOUT            => 30, 
+        ]);
+
+        // RESTORED MISSING SELECTION BLOCK
+        $stmt = $pdo->prepare("SELECT id, username, email, password_hash, role FROM users WHERE username = ? LIMIT 1");
+        $stmt->execute([$username]);
+        $userRow = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($userRow && password_verify($password, $userRow['password_hash'])) {
-            session_regenerate_id(true); // Neutralize session-fixation vectors
+            session_regenerate_id(true); 
 
-            // 1. Generate 6-digit cryptographic OTP
             $otp = sprintf("%06d", random_int(100000, 999999));
             $expiry = date("Y-m-d H:i:s", strtotime('+10 minutes'));
 
-            // 2. Save OTP and Expiry into the user's row
             $updateStmt = $pdo->prepare("UPDATE users SET otp = ?, otp_expiry = ? WHERE id = ?");
             $updateStmt->execute([$otp, $expiry, $userRow['id']]);
 
-            // 3. Send email via PHPMailer
             $mail = new PHPMailer(true);
             try {
                 $mail->isSMTP();
-                // Force XAMPP to resolve Gmail using IPv4 instead of failing on IPv6
-$mail->Host       = gethostbyname('smtp.gmail.com'); 
+                $mail->Host       = gethostbyname('smtp.gmail.com'); 
+                $mail->SMTPAuth   = true;
+                $mail->Username   = 'floodsystem6246@gmail.com';       
+                $mail->Password   = 'ssco dghg qmfl crrq';        
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; 
+                $mail->Port       = 587;                          
 
-$mail->SMTPAuth   = true;
-$mail->Username   = 'floodsystem6246@gmail.com';       // Your actual Gmail address
-$mail->Password   = 'ssco dghg qmfl crrq';        // Your 16-character App Password
-$mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; 
-$mail->Port       = 587;                          
-
-// ADD THIS BLOCK BELOW TO BYPASS LOCAL SSL CERTIFICATE BLOCKS
-$mail->SMTPOptions = array(
-    'ssl' => array(
-        'verify_peer' => false,
-        'verify_peer_name' => false,
-        'allow_self_signed' => true
-    )
-);                  // Changed from 587             
+                $mail->SMTPOptions = array(
+                    'ssl' => array(
+                        'verify_peer' => false,
+                        'verify_peer_name' => false,
+                        'allow_self_signed' => true
+                    )
+                );                 
 
                 $mail->setFrom('floodsystem6246@gmail.com', 'Flood System Security');
                 $mail->addAddress($userRow['email']); 
@@ -187,13 +172,10 @@ $mail->SMTPOptions = array(
 
                 $mail->send();
 
-                // 4. Put the identity metadata into temporary stage variables.
-                // Critical: Do NOT set $_SESSION['user_role'] yet, otherwise your routing guard will bypass OTP.
                 $_SESSION['temp_user_id']  = $userRow['id'];
                 $_SESSION['temp_username'] = $userRow['username'];
                 $_SESSION['temp_role']     = $userRow['role'];
 
-                // Redirect user to the OTP form page
                 header("Location: otp.html");
                 exit;
 
