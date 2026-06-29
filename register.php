@@ -26,7 +26,7 @@ function validate_input($data, $max_length = 255) {
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     // DATABASE CONFIGURATION FOR INTERNAL RAILWAY NETWORK
     $host = $_ENV['MYSQLHOST'] ?? 'mysql.railway.internal';
-    $db   = $_ENV['MYSQLDATABASE'] ?? 'railway';
+    $db   = $_ENV['MYSQLDATABASE'] ?? 'flood_system';
     $user = $_ENV['MYSQLUSER'] ?? 'root';
     $pass = $_ENV['MYSQLPASSWORD'] ?? 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; 
     $port = $_ENV['MYSQLPORT'] ?? '3306'; 
