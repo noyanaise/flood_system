@@ -20,6 +20,11 @@ WORKDIR /var/www/html
 # 5. Copy all your application code files from GitHub into the container
 COPY . /var/www/html/
 
+# 🔥 FIX: Force disable conflicting MPMs to solve the crash loop
+RUN a2dismod mpm_event || true \
+    && a2dismod mpm_worker || true \
+    && a2enmod mpm_prefork || true
+
 # 6. Set correct permissions so Apache can read and execute your PHP files securely
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html
