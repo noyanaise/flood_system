@@ -20,11 +20,6 @@ WORKDIR /var/www/html
 # 5. Copy all your application code files from GitHub into the container
 COPY . /var/www/html/
 
-# 🔥 FIX: Force disable conflicting MPMs to solve the crash loop
-RUN a2dismod mpm_event || true \
-    && a2dismod mpm_worker || true \
-    && a2enmod mpm_prefork || true
-
 # 6. Set correct permissions so Apache can read and execute your PHP files securely
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html
@@ -33,8 +28,12 @@ RUN chown -R www-data:www-data /var/www/html \
 RUN sed -i 's/Listen 80/Listen ${PORT}/g' /etc/apache2/ports.conf \
     && sed -i 's/<VirtualHost \*:80>/<VirtualHost *:${PORT}>/g' /etc/apache2/sites-available/000-default.conf
 
+# 🔥 FIX: Wire up the entrypoint script to fix the MPM conflict on launch
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # 8. Expose the environment port container path
 EXPOSE ${PORT}
 
-# 9. Start Apache in the foreground
-CMD ["apache2-foreground"]
+# 9. Start Apache via custom entrypoint script
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
