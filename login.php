@@ -8,11 +8,14 @@ require 'PHPMailer/PHPMailer.php';
 require 'PHPMailer/SMTP.php';
 
 // Security headers
+// Security headers optimized for seamless Railway reverse proxy routing
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("X-XSS-Protection: 1; mode=block");
-header("Referrer-Policy: strict-origin-when-cross-origin");
+header("Referrer-Policy: no-referrer-when-downgrade");
 
+// Optimized CSP: Allows the native browser form action to submit to self safely
+header("Content-Security-Policy: default-src 'self'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:;");
 // Secure session configuration optimized for Railway proxies
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
