@@ -122,13 +122,27 @@ $dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
         exit;
     }
 
-    try {
-        $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-
-        // MODIFIED: Added 'email' to the SELECT statement
-        $stmt = $pdo->prepare("SELECT id, username, email, password_hash, role FROM users WHERE username = ? LIMIT 1");
-        $stmt->execute([$username]);
-        $userRow = $stmt->fetch(PDO::FETCH_ASSOC);
+    ttry {
+    $pdo = new PDO($dsn, $user, $pass, [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES   => false,
+        PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
+        
+        // CRITICAL FIXES FOR RAILWAY ALIVE SIGNALS:
+        PDO::ATTR_TIMEOUT            => 30, // Wait up to 30 seconds for the database response
+    ]);
+} catch (PDOException $e) {
+    // If it's an API route, reply in clean JSON format
+    if (isset($_GET['action']) || basename($_SERVER['PHP_SELF']) === 'api.php') {
+        header("Content-Type: application/json");
+        echo json_encode(["error" => "Database connection failed: " . $e->getMessage()]);
+    } else {
+        // Standard user redirection or system print block
+        die("Database Connection Error: " . $e->getMessage());
+    }
+    exit;
+}
 
         if ($userRow && password_verify($password, $userRow['password_hash'])) {
             session_regenerate_id(true); // Neutralize session-fixation vectors
