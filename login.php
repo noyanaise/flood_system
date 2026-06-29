@@ -104,11 +104,12 @@ if (isset($_SESSION['user_role'])) {
 // ROUTE REGION: POST REQUEST VALIDATION & RUNTIME CHECK
 // ========================================================
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    $host = 'junction.proxy.rlwy.net';
-    $db   = 'railway';
-    $user = 'root';
-    $pass = 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; 
-    $port = '39103';     
+    // DATABASE CONFIGURATION FOR INTERNAL RAILWAY NETWORK
+    $host = $_ENV['MYSQLHOST'] ?? 'mysql.railway.internal';
+    $db   = $_ENV['MYSQLDATABASE'] ?? 'railway';
+    $user = $_ENV['MYSQLUSER'] ?? 'root';
+    $pass = $_ENV['MYSQLPASSWORD'] ?? 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; 
+    $port = $_ENV['MYSQLPORT'] ?? '3306'; 
     $charset = 'utf8mb4';
 
     $dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
@@ -130,7 +131,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             PDO::ATTR_TIMEOUT            => 30, 
         ]);
 
-        // RESTORED MISSING SELECTION BLOCK
+        // RESTORED USER FETCH QUERY
         $stmt = $pdo->prepare("SELECT id, username, email, password_hash, role FROM users WHERE username = ? LIMIT 1");
         $stmt->execute([$username]);
         $userRow = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -138,12 +139,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         if ($userRow && password_verify($password, $userRow['password_hash'])) {
             session_regenerate_id(true); 
 
+            // 1. Generate 6-digit cryptographic OTP
             $otp = sprintf("%06d", random_int(100000, 999999));
             $expiry = date("Y-m-d H:i:s", strtotime('+10 minutes'));
 
+            // 2. Save OTP and Expiry into the user's row
             $updateStmt = $pdo->prepare("UPDATE users SET otp = ?, otp_expiry = ? WHERE id = ?");
             $updateStmt->execute([$otp, $expiry, $userRow['id']]);
 
+            // 3. Send email via PHPMailer
             $mail = new PHPMailer(true);
             try {
                 $mail->isSMTP();
@@ -172,6 +176,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 $mail->send();
 
+                // 4. Put the identity metadata into temporary stage variables.
                 $_SESSION['temp_user_id']  = $userRow['id'];
                 $_SESSION['temp_username'] = $userRow['username'];
                 $_SESSION['temp_role']     = $userRow['role'];
