@@ -18,9 +18,9 @@
             <p class="text-muted">Sign in to access system metrics</p>
         </div>
 
-        <div id="error-alert" class="alert alert-danger d-none" role="alert"></div>
+        <div id="error-container"></div>
 
-        <form id="authForm" method="POST" action="login.php">
+        <form method="POST" action="login.php">
             <div class="mb-3">
                 <label class="form-label">Username</label>
                 <input type="text" name="username" class="form-control" placeholder="Enter username" required>
@@ -29,47 +29,28 @@
                 <label class="form-label">Password</label>
                 <input type="password" name="password" class="form-control" placeholder="••••••••" required>
             </div>
-            <button type="submit" id="submitBtn" class="btn btn-primary w-100 py-2 fw-semibold">
+            <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">
                 Sign In
             </button>
         </form>
     </div>
 
     <script>
-        // Intercept normal submission to handle any errors elegantly
-        document.getElementById('authForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
+        // Simple helper to catch credential errors if login.php boots us back here
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('error')) {
+            const errorType = urlParams.get('error');
+            const container = document.getElementById('error-container');
+            container.className = "alert alert-danger mb-3";
             
-            const form = e.target;
-            const btn = document.getElementById('submitBtn');
-            const alertBox = document.getElementById('error-alert');
-            
-            btn.disabled = true;
-            btn.innerText = "Verifying...";
-            alertBox.classList.add('d-none');
-
-            try {
-                const formData = new FormData(form);
-                const response = await fetch('login.php', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
-
-                if (data.status === 'success' || data.redirect) {
-                    // Force the browser to relocate instantly
-                    window.location.href = data.redirect || 'index.php';
-                } else {
-                    throw new Error(data.error || "Invalid user credentials.");
-                }
-            } catch (err) {
-                alertBox.innerText = err.message;
-                alertBox.classList.remove('d-none');
-                btn.disabled = false;
-                btn.innerText = "Sign In";
+            if (errorType === 'failed') {
+                container.innerText = "Invalid username or password match configuration.";
+            } else if (errorType === 'empty') {
+                container.innerText = "Please fill out all authorization fields.";
+            } else {
+                container.innerText = "An error occurred during authentication.";
             }
-        });
+        }
     </script>
 </body>
 </html>
