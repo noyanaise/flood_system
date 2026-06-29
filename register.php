@@ -24,22 +24,19 @@ function validate_input($data, $max_length = 255) {
 }
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-   // DATABASE CONFIGURATION FOR RAILWAY
-$host = 'junction.proxy.rlwy.net';
-$db   = 'railway';
-$user = 'root';
-$pass = 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; // Click the copy button next to MYSQLPASSWORD on your screen and paste it here
-$port = '39103';     // Copy your 5-digit MYSQLPORT number and paste it here
-$charset = 'utf8mb4';
+    // DATABASE CONFIGURATION FOR RAILWAY
+    $host = 'junction.proxy.rlwy.net';
+    $db   = 'railway';
+    $user = 'root';
+    $pass = 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; 
+    $port = '39103';     
+    $charset = 'utf8mb4';
 
-// Updated DSN string to include the custom Railway port
-$dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
+    $dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
 
     $username = validate_input($_POST['username'] ?? '');
     $email    = trim($_POST['email'] ?? ''); 
     $password = trim($_POST['password'] ?? '');
-    
-    // HARDCODED FIX: Overrides any client parameters to secure user level assignment
     $role     = 'user'; 
 
     if (!$username || empty($password)) {
@@ -58,26 +55,20 @@ $dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
     }
 
     try {
-    $pdo = new PDO($dsn, $user, $pass, [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
-        PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
-        
-        // CRITICAL FIXES FOR RAILWAY ALIVE SIGNALS:
-        PDO::ATTR_TIMEOUT            => 30, // Wait up to 30 seconds for the database response
-    ]);
-} catch (PDOException $e) {
-    // If it's an API route, reply in clean JSON format
-    if (isset($_GET['action']) || basename($_SERVER['PHP_SELF']) === 'api.php') {
-        header("Content-Type: application/json");
-        echo json_encode(["error" => "Database connection failed: " . $e->getMessage()]);
-    } else {
-        // Standard user redirection or system print block
-        die("Database Connection Error: " . $e->getMessage());
-    }
-    exit;
-}
+        $pdo = new PDO($dsn, $user, $pass, [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
+            PDO::ATTR_TIMEOUT            => 30, 
+        ]);
+
+        $checkStmt = $pdo->prepare("SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1");
+        $checkStmt->execute([$username, $email]);
+        if ($checkStmt->fetch()) {
+            header("Location: register.html?error=exists");
+            exit;
+        }
 
         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
         
