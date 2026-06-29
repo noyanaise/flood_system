@@ -1,205 +1,202 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Smart Flood Barrier System</title>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="style.css" />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
-  </head>
-  <body id="appBody">
-    <header class="app-header">
-      <div class="header-brand">
-        <h1>Smart Flood Barrier System</h1>
+<?php
+// Include PHPMailer classes at the top
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
 
-        <div class="user-profile-badge" style="display: flex; gap: 15px; align-items: center;">
-          <span>
-            Operator: <strong id="profileUsername">Loading...</strong> (<span id="profileRole">...</span>)
-          </span>
-          <span>System Status: <strong>Online</strong></span>
-          <button onclick="handleSignOut()" style="background: #ef4444; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer;">
-            Sign Out
-          </button>
-        </div>
-      </div>
+require 'PHPMailer/Exception.php';
+require 'PHPMailer/PHPMailer.php';
+require 'PHPMailer/SMTP.php';
 
-      <div id="statusBar">
-        <button id="btnConnectSerial" onclick="toggleSerialLink()" style="background: var(--primary-blue); color: #fff; font-weight: 600; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: background 0.2s;">
-          🔌 Connect Arduino
-        </button>
+// Security headers and session configuration
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("X-XSS-Protection: 1; mode=block");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:;");
 
-        <button onclick="send('A')">AUTO MODE</button>
-        <button onclick="send('S')" style="background: #2ecc71; color: #000;">FORCE SAFE</button>
-        <button onclick="send('D')" style="background: #e74c3c; color: #fff;">FORCE DANGER</button>
-        
-        <span id="connStatus" style="margin-left: 10px;">System Ready</span>
-        <span id="serialStatusIndicator" style="margin-left: 10px; opacity: 0.8; font-size: 14px;"></span>
-      </div>
-    </header>
+// Secure session configuration
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'domain' => $_SERVER['HTTP_HOST'],
+    'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+    'httponly' => true,
+    'samesite' => 'Strict'
+]);
+session_start();
 
-    <div id="dangerNotificationBanner" class="alert-banner status-danger-banner">
-      ⚠️ CRITICAL WARNING: SYSTEM HAS DETECTED FLOOD DANGER LEVELS! TAKE IMMEDIATE SAFETY PRECAUTIONS!
-    </div>
-    <div id="warningNotificationBanner" class="alert-banner status-warning-banner">
-      ⚠️ WARNING ALERT: Elevated water levels detected. System telemetry indicates approaching safety thresholds.
-    </div>
+// CSRF Protection
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 
-    <div class="main-layout-wrapper">
-      <aside class="sidebar-nav">
-        <div class="sidebar-title">Navigation Menu</div>
-        <nav class="tabs">
-          <button class="tabButton active" onclick="showTab('recordsView', this)">Records Grid</button>
-          <button class="tabButton" onclick="showTab('dashboardView', this)">Metrics Dashboard</button>
-          <button class="tabButton" onclick="showTab('summaryView', this)">KPI Summary</button>
-        </nav>
-      </aside>
+// Validate CSRF token function
+function validate_csrf_token($token) {
+    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+}
 
-      <main class="content-display-view">
-        
-        <div id="recordsView" class="tabContent active">
-          <h2 id="tableCaptionHeading" class="view-heading">Live System Logs</h2>
-          <div class="filters">
-            <label>Status:
-              <select id="statusFilter">
-                <option value="">All Rows</option>
-                <option value="SAFE">SAFE</option>
-                <option value="WARNING">WARNING</option>
-                <option value="DANGER">DANGER</option>
-              </select>
-            </label>
-            <label>Start: <input type="date" id="startDate" /></label>
-            <label>End: <input type="date" id="endDate" /></label>
-           
+// Input validation function
+function validate_input($data, $max_length = 255, $type = 'string') {
+    if (empty($data)) return false;
+    
+    $data = trim($data);
+    $data = stripslashes($data);
+    
+    if (strlen($data) > $max_length) return false;
+    
+    switch ($type) {
+        case 'email':
+            $data = filter_var($data, FILTER_SANITIZE_EMAIL);
+            if (!filter_var($data, FILTER_VALIDATE_EMAIL)) return false;
+            break;
+        case 'int':
+            if (!filter_var($data, FILTER_VALIDATE_INT)) return false;
+            $data = (int)$data;
+            break;
+        case 'alphanum':
+            if (!preg_match('/^[a-zA-Z0-9_]+$/', $data)) return false;
+            break;
+        case 'phone':
+            if (!preg_match('/^[0-9\-\+\(\)\s]+$/', $data)) return false;
+            break;
+        default:
+            $data = htmlspecialchars($data, ENT_QUOTES, 'UTF-8');
+    }
+    
+    return $data;
+}
 
-            <div class="action-utilities">
-              <button id="trashToggleBtn" class="btn-trash" onclick="toggleTrashView()">View Trash Bin</button>
-              <button onclick="openCreateModal()" class="btn-add-manual">+ Add Manual Log</button>
-            </div>
-          </div>
+// Regenerate session ID periodically
+if (!isset($_SESSION['created'])) {
+    session_regenerate_id(true);
+    $_SESSION['created'] = time();
+} else if (time() - $_SESSION['created'] > 1800) {
+    session_regenerate_id(true);
+    $_SESSION['created'] = time();
+}
 
-          <div class="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Distance</th>
-                  <th>Barrier</th>
-                  <th>Water Level</th>
-                  <th>Status</th>
-                  <th class="actions-col text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody id="log"></tbody>
-            </table>
-          </div>
-        </div>
+// ========================================================
+// ROUTE REGION: CONSOLIDATED DE-AUTHENTICATION EXPLICIT ACTION
+// ========================================================
+if (isset($_GET['action']) && $_GET['action'] === 'logout') {
+    $_SESSION = array();
 
-        <div id="dashboardView" class="tabContent">
-          
-          <div class="chartBox" id="dataInterpretationDashboard" style="margin-bottom: 20px; padding: 20px; border-left: 5px solid #0ea5e9; flex-direction: column; display: flex;">
-            <h3 style="margin-bottom: 10px; font-size: 15px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px;">
-              📈 Immediate Threat & Trend Analysis
-            </h3>
-            <p id="interpretationTextDashboard" style="color: #9ca3af; font-size: 14px; line-height: 1.6; margin: 0;">
-              Waiting for real-time telemetry array processing...
-            </p>
-          </div>
+    if (ini_get("session.use_cookies")) {
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000,
+            $params["path"], $params["domain"],
+            $params["secure"], $params["httponly"]
+        );
+    }
 
-          <div class="charts">
-            <div class="chartBox">
-              <h3 style="margin-bottom: 10px;">Water Level (Live)</h3>
-              <div class="canvas-container">
-                <canvas id="waterChart"></canvas>
-              </div>
-              <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-subtle);">
-                <p id="waterChartInterp" style="font-size: 13px; color: #d1d5db; line-height: 1.5; margin: 0;">Analyzing liquid displacement trajectory...</p>
-              </div>
-            </div>
-            
-            <div class="chartBox">
-              <h3 style="margin-bottom: 10px;">Status Distribution</h3>
-              <div class="canvas-container">
-                <canvas id="statusChart"></canvas>
-              </div>
-              <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-subtle);">
-                <p id="statusChartInterp" style="font-size: 13px; color: #d1d5db; line-height: 1.5; margin: 0;">Calculating hazard state ratios...</p>
-              </div>
-            </div>
-            
-            <div class="chartBox">
-              <h3 style="margin-bottom: 10px;">Hardware Activations</h3>
-              <div class="canvas-container">
-                <canvas id="activityChart"></canvas>
-              </div>
-              <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-subtle);">
-                <p id="activityChartInterp" style="font-size: 13px; color: #d1d5db; line-height: 1.5; margin: 0;">Evaluating actuator load distribution...</p>
-              </div>
-            </div>
-          </div>
-        </div>
+    session_destroy();
+    header("Location: login.html");
+    exit;
+}
 
-        <div id="summaryView" class="tabContent">
-          <h2 class="view-heading">System KPI Summary Profile</h2>
-          
-          <div id="summaryBox" class="summary-container" style="margin-bottom: 20px;"></div>
+// Automatic Routing Guard
+if (isset($_SESSION['user_role'])) {
+    header("Location: index.html");
+    exit;
+}
 
-          <div class="chartBox" id="dataInterpretationKPI" style="margin-top: 20px; padding: 20px; border-left: 5px solid #a855f7; flex-direction: column; display: flex;">
-            <h3 style="margin-bottom: 10px; font-size: 15px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px;">
-              📊 Strategic System Performance & Maintenance Insights
-            </h3>
-            <p id="interpretationTextKPI" style="color: #9ca3af; font-size: 14px; line-height: 1.6; margin: 0;">
-              Waiting for historical database record processing...
-            </p>
-          </div>
+// ========================================================
+// ROUTE REGION: POST REQUEST VALIDATION & RUNTIME CHECK
+// ========================================================
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    // DATABASE CONFIGURATION FOR INTERNAL RAILWAY NETWORK
+    $host = $_ENV['MYSQLHOST'] ?? 'mysql.railway.internal';
+    $db   = $_ENV['MYSQLDATABASE'] ?? 'railway';
+    $user = $_ENV['MYSQLUSER'] ?? 'root';
+    $pass = $_ENV['MYSQLPASSWORD'] ?? 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; 
+    $port = $_ENV['MYSQLPORT'] ?? '3306'; 
+    $charset = 'utf8mb4';
 
-        </div>
-      </main>
-    </div>
+    $dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
 
-    <div id="crudModal" class="modal">
-      <div class="modal-content">
-        <span class="close" onclick="closeCrudModal()">&times;</span>
-        <h2 id="modalTitle">Add / Edit Record</h2>
-        <form id="crudForm" onsubmit="handleCrudSubmit(event)">
-          <input type="hidden" id="recordId" />
-          <div class="form-group">
-            <label for="recordDistance">Distance (cm):</label>
-            <input type="number" id="recordDistance" step="0.01" required />
-          </div>
-          <div class="form-group">
-            <label for="recordWaterLevel">Water Level (cm):</label>
-            <input type="number" id="recordWaterLevel" step="0.01" required />
-          </div>
-          <div class="form-group">
-            <label for="recordBarrier">Barrier Status:</label>
-            <select id="recordBarrier">
-              <option value="0">CLOSED</option>
-              <option value="1">OPEN / DEPLOYED</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="recordCondition">Condition Status Flag:</label>
-            <select id="recordCondition">
-              <option value="SAFE">SAFE</option>
-              <option value="WARNING">WARNING</option>
-              <option value="DANGER">DANGER</option>
-            </select>
-          </div>
-          <button type="submit" class="btn-save">Commit Record Metrics</button>
-        </form>
-      </div>
-    </div>
+    $username = trim($_POST['username'] ?? '');
+    $password = trim($_POST['password'] ?? '');
 
-    <footer class="app-footer">
-      <p>&copy; 2026 Smart Flood Barrier System. All rights reserved.</p>
-    </footer>
+    if (empty($username) || empty($password)) {
+        header("Location: login.html?error=empty");
+        exit;
+    }
 
-    <script src="auth-guard.js"></script>
-    <script src="script.js"></script>
-  </body>
-</html>
+    try {
+        $pdo = new PDO($dsn, $user, $pass, [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
+            PDO::ATTR_TIMEOUT            => 30, 
+        ]);
+
+        // RESTORED USER FETCH QUERY
+        $stmt = $pdo->prepare("SELECT id, username, email, password_hash, role FROM users WHERE username = ? LIMIT 1");
+        $stmt->execute([$username]);
+        $userRow = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($userRow && password_verify($password, $userRow['password_hash'])) {
+            session_regenerate_id(true); 
+
+            // 1. Generate 6-digit cryptographic OTP
+            $otp = sprintf("%06d", random_int(100000, 999999));
+            $expiry = date("Y-m-d H:i:s", strtotime('+10 minutes'));
+
+            // 2. Save OTP and Expiry into the user's row
+            $updateStmt = $pdo->prepare("UPDATE users SET otp = ?, otp_expiry = ? WHERE id = ?");
+            $updateStmt->execute([$otp, $expiry, $userRow['id']]);
+
+            // 3. Send email via PHPMailer
+            $mail = new PHPMailer(true);
+            try {
+                $mail->isSMTP();
+                $mail->Host       = gethostbyname('smtp.gmail.com'); 
+                $mail->SMTPAuth   = true;
+                $mail->Username   = 'floodsystem6246@gmail.com';       
+                $mail->Password   = 'ssco dghg qmfl crrq';        
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; 
+                $mail->Port       = 587;                          
+
+                $mail->SMTPOptions = array(
+                    'ssl' => array(
+                        'verify_peer' => false,
+                        'verify_peer_name' => false,
+                        'allow_self_signed' => true
+                    )
+                );                 
+
+                $mail->setFrom('floodsystem6246@gmail.com', 'Flood System Security');
+                $mail->addAddress($userRow['email']); 
+
+                $mail->isHTML(true);
+                $mail->Subject = 'Your Login Verification Code';
+                $mail->Body    = "Your One-Time Password (OTP) for login is <b>$otp</b>. It will expire in 10 minutes.";
+                $mail->AltBody = "Your One-Time Password (OTP) for login is $otp. It will expire in 10 minutes.";
+
+                $mail->send();
+
+                // 4. Put the identity metadata into temporary stage variables.
+                $_SESSION['temp_user_id']  = $userRow['id'];
+                $_SESSION['temp_username'] = $userRow['username'];
+                $_SESSION['temp_role']     = $userRow['role'];
+
+                header("Location: otp.html");
+                exit;
+
+            } catch (Exception $e) {
+                die("Mailer Error: " . $e->getMessage());
+            }
+        } else {
+            header("Location: login.html?error=failed");
+            exit;
+        }
+
+    } catch (PDOException $e) {
+        die("Database Error: " . $e->getMessage());
+    }
+} else {
+    header("Location: login.html");
+    exit;
+}
+?>
