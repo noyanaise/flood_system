@@ -1,89 +1,150 @@
 <?php
-// Safely start secure session configuration without restrictive domain locking
+// Include PHPMailer classes at the top
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+require 'PHPMailer/Exception.php';
+require 'PHPMailer/PHPMailer.php';
+require 'PHPMailer/SMTP.php';
+
+// Security headers
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("X-XSS-Protection: 1; mode=block");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+
+// Secure session configuration optimized for Railway proxies
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
         'lifetime' => 0,
         'path' => '/',
         'secure' => true,
         'httponly' => true,
-        'samesite' => 'Lax' // Changed from 'Strict' to 'Lax' to allow seamless proxy routing
+        'samesite' => 'Lax' // Changed to Lax to prevent cross-page cookie loss behind reverse proxy
     ]);
     session_start();
 }
 
-header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
+// CSRF Protection
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 
-// Handle Logout routing action
+// ========================================================
+// ROUTE REGION: DE-AUTHENTICATION EXPLICIT ACTION (LOGOUT)
+// ========================================================
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     $_SESSION = array();
+
+    if (ini_get("session.use_cookies")) {
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000,
+            $params["path"], $params["domain"],
+            $params["secure"], $params["httponly"]
+        );
+    }
+
     session_destroy();
     header("Location: login.html");
     exit;
 }
 
-// Database Configuration using Railway Variables
-$host = $_ENV['MYSQLHOST'] ?? 'mysql.railway.internal';
-$db   = $_ENV['MYSQLDATABASE'] ?? 'railway';
-$user = $_ENV['MYSQLUSER'] ?? 'root';
-$pass = $_ENV['MYSQLPASSWORD'] ?? 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; 
-$port = $_ENV['MYSQLPORT'] ?? '3306'; 
-$charset = 'utf8mb4';
+// ========================================================
+// ROUTE REGION: POST REQUEST VALIDATION & RUNTIME CHECK
+// ========================================================
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    // DATABASE CONFIGURATION FOR INTERNAL RAILWAY NETWORK
+    $host = $_ENV['MYSQLHOST'] ?? 'mysql.railway.internal';
+    $db   = $_ENV['MYSQLDATABASE'] ?? 'railway';
+    $user = $_ENV['MYSQLUSER'] ?? 'root';
+    $pass = $_ENV['MYSQLPASSWORD'] ?? 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; 
+    $port = $_ENV['MYSQLPORT'] ?? '3306'; 
+    $charset = 'utf8mb4';
 
-$dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
+    $dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
 
-try {
-    $pdo = new PDO($dsn, $user, $pass, [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
-    ]);
-} catch (PDOException $e) {
-    echo json_encode(["error" => "Database link failure: " . $e->getMessage()]);
-    exit;
-}
-
-// Intercept the Login Form submissions
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $rawInput = file_get_contents('php://input');
-    $inputData = json_decode($rawInput, true) ?? $_POST;
-
-    $username = trim($inputData['username'] ?? '');
-    $password = trim($inputData['password'] ?? '');
+    $username = trim($_POST['username'] ?? '');
+    $password = trim($_POST['password'] ?? '');
 
     if (empty($username) || empty($password)) {
-        echo json_encode(["error" => "Please enter both username and password."]);
+        header("Location: login.html?error=empty");
         exit;
     }
 
     try {
-        // Query user details from DB
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ? LIMIT 1");
+        $pdo = new PDO($dsn, $user, $pass, [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
+            PDO::ATTR_TIMEOUT            => 30, 
+        ]);
+
+        $stmt = $pdo->prepare("SELECT id, username, email, password_hash, role FROM users WHERE username = ? LIMIT 1");
         $stmt->execute([$username]);
-        $userAccount = $stmt->fetch();
+        $userRow = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($userAccount && password_verify($password, $userAccount['password_hash'])) {
-            
-            // 🔥 OTP TEMPORARILY DISABLED: Directly authorize session values right now!
-            $_SESSION['user_id']   = $userAccount['id'];
-            $_SESSION['username']  = $userAccount['username'];
-            $_SESSION['role']      = $userAccount['role'];
-            $_SESSION['user_role'] = $userAccount['role']; // Fallback matching key
+        if ($userRow && password_verify($password, $userRow['password_hash'])) {
+            session_regenerate_id(true); 
 
-            // Tell your frontend everything went fine and to load index.php immediately
-            echo json_encode([
-                "status" => "success", 
-                "message" => "Authentication clear! Redirecting...", 
-                "redirect" => "index.php"
-            ]);
-            exit;
+            // 1. Generate 6-digit cryptographic OTP
+            $otp = sprintf("%06d", random_int(100000, 999999));
+            $expiry = date("Y-m-d H:i:s", strtotime('+10 minutes'));
+
+            // 2. Save OTP and Expiry into the user's row
+            $updateStmt = $pdo->prepare("UPDATE users SET otp = ?, otp_expiry = ? WHERE id = ?");
+            $updateStmt->execute([$otp, $expiry, $userRow['id']]);
+
+            // 3. Send email via PHPMailer
+            $mail = new PHPMailer(true);
+            try {
+                $mail->isSMTP();
+                $mail->Host       = 'smtp.gmail.com'; 
+                $mail->SMTPAuth   = true;
+                $mail->Username   = 'floodsystem6246@gmail.com';       
+                $mail->Password   = 'ssco dghg qmfl crrq';        
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; 
+                $mail->Port       = 587;                          
+
+                $mail->SMTPOptions = array(
+                    'ssl' => array(
+                        'verify_peer' => false,
+                        'verify_peer_name' => false,
+                        'allow_self_signed' => true
+                    )
+                );                 
+
+                $mail->setFrom('floodsystem6246@gmail.com', 'Flood System Security');
+                $mail->addAddress($userRow['email']); 
+
+                $mail->isHTML(true);
+                $mail->Subject = 'Your Login Verification Code';
+                $mail->Body    = "Your One-Time Password (OTP) for login is <b>$otp</b>. It will expire in 10 minutes.";
+                $mail->AltBody = "Your One-Time Password (OTP) for login is $otp. It will expire in 10 minutes.";
+
+                $mail->send();
+
+                // 4. Staging values safely for validation step in verification pipeline
+                $_SESSION['temp_user_id']  = $userRow['id'];
+                $_SESSION['temp_username'] = $userRow['username'];
+                $_SESSION['temp_role']     = $userRow['role'];
+
+                header("Location: otp.html");
+                exit;
+
+            } catch (Exception $e) {
+                die("Mailer Error: " . $e->getMessage());
+            }
         } else {
-            echo json_encode(["error" => "Invalid username or password match configuration."]);
+            header("Location: login.html?error=failed");
             exit;
         }
+
     } catch (PDOException $e) {
-        echo json_encode(["error" => "System processing fault: " . $e->getMessage()]);
-        exit;
+        die("Database Error: " . $e->getMessage());
     }
+} else {
+    header("Location: login.html");
+    exit;
 }
 ?>
