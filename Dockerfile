@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     zip \
     unzip \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -y gd pdo pdo_mysql
+    && docker-php-ext-install gd pdo pdo_mysql
 
 # 3. Enable Apache rewrite engine for clean routing
 RUN a2enmod rewrite
