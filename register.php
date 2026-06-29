@@ -58,14 +58,26 @@ $dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
     }
 
     try {
-        $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-
-        $checkStmt = $pdo->prepare("SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1");
-        $checkStmt->execute([$username, $email]);
-        if ($checkStmt->fetch()) {
-            header("Location: register.html?error=exists");
-            exit;
-        }
+    $pdo = new PDO($dsn, $user, $pass, [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES   => false,
+        PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
+        
+        // CRITICAL FIXES FOR RAILWAY ALIVE SIGNALS:
+        PDO::ATTR_TIMEOUT            => 30, // Wait up to 30 seconds for the database response
+    ]);
+} catch (PDOException $e) {
+    // If it's an API route, reply in clean JSON format
+    if (isset($_GET['action']) || basename($_SERVER['PHP_SELF']) === 'api.php') {
+        header("Content-Type: application/json");
+        echo json_encode(["error" => "Database connection failed: " . $e->getMessage()]);
+    } else {
+        // Standard user redirection or system print block
+        die("Database Connection Error: " . $e->getMessage());
+    }
+    exit;
+}
 
         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
         
