@@ -29,7 +29,7 @@ $host = 'junction.proxy.rlwy.net';
 $db   = 'railway';
 $user = 'root';
 $pass = 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; // Click the copy button next to MYSQLPASSWORD on your screen and paste it here
-$port = '3306';     // Copy your 5-digit MYSQLPORT number and paste it here
+$port = '39103';     // Copy your 5-digit MYSQLPORT number and paste it here
 $charset = 'utf8mb4';
 
 // Updated DSN string to include the custom Railway port
