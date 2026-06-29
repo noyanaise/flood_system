@@ -32,13 +32,16 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type");
 
 // Database Configuration
-$host = 'localhost';
-$db   = 'flood_system'; 
+$host = 'junction.proxy.rlwy.net';
+$db   = 'railway';
 $user = 'root';
-$pass = ''; 
+$pass = 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; // Click the copy button next to MYSQLPASSWORD on your screen and paste it here
+$port = '3306';     // Copy your 5-digit MYSQLPORT number and paste it here
 $charset = 'utf8mb4';
 
-$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+// Updated DSN string to include the custom Railway port
+$dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
+
 try {
     $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 } catch (PDOException $e) {
