@@ -43,9 +43,21 @@ $charset = 'utf8mb4';
 $dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
 
 try {
-    $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $pdo = new PDO($dsn, $user, $pass, [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES   => false, // Keeps queries native and secure
+        PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
+        PDO::ATTR_TIMEOUT            => 15,    // Extends timeout window to 15 seconds to prevent drops
+    ]);
 } catch (PDOException $e) {
-    echo json_encode(["error" => "Database connection failed: " . $e->getMessage()]);
+    // If you are inside api.php, keep json_encode. 
+    // If you are inside login/register.php, this will gracefully echo the error.
+    if (basename($_SERVER['PHP_SELF']) === 'api.php') {
+        echo json_encode(["error" => "Database connection failed: " . $e->getMessage()]);
+    } else {
+        echo "Database Connection Error: " . $e->getMessage();
+    }
     exit;
 }
 
