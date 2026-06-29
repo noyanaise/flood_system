@@ -1,13 +1,12 @@
 <?php
-// Safely start secure session configuration
+// Safely start secure session configuration without restrictive domain locking
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
         'lifetime' => 0,
         'path' => '/',
-        'domain' => $_SERVER['HTTP_HOST'],
-        'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'secure' => true,
         'httponly' => true,
-        'samesite' => 'Strict'
+        'samesite' => 'Lax' // Changed from 'Strict' to 'Lax' to allow seamless proxy routing
     ]);
     session_start();
 }
