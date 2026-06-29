@@ -31,33 +31,26 @@ header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type");
 
-// Database Configuration
-$host = 'junction.proxy.rlwy.net';
-$db   = 'railway';
-$user = 'root';
-$pass = 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; // Click the copy button next to MYSQLPASSWORD on your screen and paste it here
-$port = '39103';     // Copy your 5-digit MYSQLPORT number and paste it here
+// Database Configuration using Railway High-Speed Internal Variables
+$host = $_ENV['MYSQLHOST'] ?? 'mysql.railway.internal';
+$db   = $_ENV['MYSQLDATABASE'] ?? 'railway';
+$user = $_ENV['MYSQLUSER'] ?? 'root';
+$pass = $_ENV['MYSQLPASSWORD'] ?? 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; 
+$port = $_ENV['MYSQLPORT'] ?? '3306'; 
 $charset = 'utf8mb4';
 
-// Updated DSN string to include the custom Railway port
 $dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
 
 try {
     $pdo = new PDO($dsn, $user, $pass, [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false, // Keeps queries native and secure
+        PDO::ATTR_EMULATE_PREPARES   => false,
         PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
-        PDO::ATTR_TIMEOUT            => 15,    // Extends timeout window to 15 seconds to prevent drops
+        PDO::ATTR_TIMEOUT            => 30, 
     ]);
 } catch (PDOException $e) {
-    // If you are inside api.php, keep json_encode. 
-    // If you are inside login/register.php, this will gracefully echo the error.
-    if (basename($_SERVER['PHP_SELF']) === 'api.php') {
-        echo json_encode(["error" => "Database connection failed: " . $e->getMessage()]);
-    } else {
-        echo "Database Connection Error: " . $e->getMessage();
-    }
+    echo json_encode(["error" => "Database connection failed: " . $e->getMessage()]);
     exit;
 }
 
@@ -168,8 +161,6 @@ elseif ($action === 'create' && $method === 'POST') {
         $water_level = $max_distance - $distance;
         if ($water_level < 0) $water_level = 0;
         
-       // Inside: elseif ($action === 'create' && $method === 'POST')
-
         $scondition = "SAFE";
         // UPDATED: SAFE is below 3.0, WARNING is 3.0 up to 4.0
         if ($water_level >= 2.0 && $water_level < 3.0) {
@@ -207,10 +198,6 @@ elseif ($action === 'update' && $method === 'POST') {
         $water_level = $max_distance - $distance;
         if ($water_level < 0) $water_level = 0;
         
-        $scondition = "SAFE";
-
-        // Inside: elseif ($action === 'update' && $method === 'POST')
-
         $scondition = "SAFE";
         // UPDATED: SAFE is below 3.0, WARNING is 3.0 up to 4.0
         if ($water_level >= 2.0 && $water_level < 3.0) {
