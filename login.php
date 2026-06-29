@@ -104,11 +104,15 @@ if (isset($_SESSION['user_role'])) {
 // ROUTE REGION: POST REQUEST VALIDATION & RUNTIME CHECK
 // ========================================================
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    $host = 'localhost';
-    $db   = 'flood_system'; 
-    $user = 'root';
-    $pass = '';
-    $dsn  = "mysql:host=$host;dbname=$db;charset=utf8mb4";
+    $host = 'junction.proxy.rlwy.net';
+$db   = 'railway';
+$user = 'root';
+$pass = 'KKnlRsdVlmoSIGLSsKzsFKvCgPmxdYrx'; // Click the copy button next to MYSQLPASSWORD on your screen and paste it here
+$port = '3306';     // Copy your 5-digit MYSQLPORT number and paste it here
+$charset = 'utf8mb4';
+
+// Updated DSN string to include the custom Railway port
+$dsn = "mysql:host=$host;dbname=$db;port=$port;charset=$charset";
 
     $username = trim($_POST['username'] ?? '');
     $password = trim($_POST['password'] ?? '');
