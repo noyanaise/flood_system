@@ -10,13 +10,10 @@ if (session_status() === PHP_SESSION_NONE) {
  * ==========================================================
  */
 
-// 1. Define the exact actions that ONLY Administrators are allowed to perform
 $admin_only_actions = ['insert', 'create', 'update', 'delete', 'restore', 'command', 'force', 'mode'];
 $action = isset($_GET['action']) ? strtolower(trim($_GET['action'])) : '';
 
-// 2. Only block the request if they are trying to MODIFY data (we let "fetch" pass through automatically)
 if (in_array($action, $admin_only_actions)) {
-    // Fallback alignment: check both $_SESSION['role'] and $_SESSION['user_role']
     $current_role = $_SESSION['role'] ?? $_SESSION['user_role'] ?? '';
     
     if (empty($current_role) || strtolower(trim($current_role)) !== 'admin') {
@@ -26,7 +23,6 @@ if (in_array($action, $admin_only_actions)) {
     }
 }
 
-// ... YOUR NORMAL DATABASE CONNECTION GOES BELOW THIS LINE ...
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type");
@@ -56,7 +52,6 @@ try {
 
 $method = $_SERVER['REQUEST_METHOD'];
 
-// Helper to get raw POST data inputs safely
 $rawInput = file_get_contents('php://input');
 $inputData = json_decode($rawInput, true);
 
@@ -65,17 +60,19 @@ if (!$inputData && $method === 'POST') {
 }
 
 // ========================================================
-// 1. HARDWARE AUTO LINKER (USED BY BRIDGE.PHP)
+// 1. HARDWARE AUTO LINKER (USED BY ARDUINO / ESP32 BRIDGE)
 // ========================================================
 if ($action === 'create_record' && $method === 'POST') {
-    $distance    = $inputData['DISTANCE'] ?? null;
+    // Standardized to accept either case variation safely
+    $distance    = $inputData['distance'] ?? $inputData['DISTANCE'] ?? null;
     $water_level = $inputData['water_level'] ?? null;
     $barrier     = $inputData['barrier'] ?? null;
     $scondition  = $inputData['scondition'] ?? null;
 
     if ($distance !== null && $water_level !== null && $barrier !== null && $scondition !== null) {
         try {
-            $stmt = $pdo->prepare("INSERT INTO records (DISTANCE, water_level, barrier, scondition) VALUES (?, ?, ?, ?)");
+            // FIXED: Using lowercase 'distance' column to match schema
+            $stmt = $pdo->prepare("INSERT INTO records (distance, water_level, barrier, scondition) VALUES (?, ?, ?, ?)");
             $stmt->execute([$distance, $water_level, $barrier, $scondition]);
             echo json_encode(["status" => "success", "message" => "Telemetry registered successfully"]);
         } catch (PDOException $e) {
@@ -92,39 +89,31 @@ if ($action === 'create_record' && $method === 'POST') {
 // ========================================================
 elseif ($action === 'fetch' && $method === 'GET') {
     $trash = isset($_GET['trash']) ? (int)$_GET['trash'] : 0;
-    
-    // Extract filter variables from the URL query parameters
     $condition = $_GET['condition'] ?? $_GET['scondition'] ?? $_GET['status'] ?? '';
     $start = $_GET['start'] ?? '';
     $end = $_GET['end'] ?? '';
 
     try {
-        // Base SQL Structure
         $sql = "SELECT * FROM records WHERE is_deleted = ?";
         $params = [$trash];
 
-        // 1. Dynamic Status/Condition Filtering
         if (!empty($condition)) {
             $sql .= " AND UPPER(scondition) = ?";
             $params[] = strtoupper($condition);
         }
 
-        // 2. Dynamic Start Date Filtering
         if (!empty($start)) {
             $sql .= " AND tStamp >= ?";
             $params[] = $start . " 00:00:00";
         }
 
-        // 3. Dynamic End Date Filtering
         if (!empty($end)) {
             $sql .= " AND tStamp <= ?";
             $params[] = $end . " 23:59:59";
         }
 
-        // Finalize sorting sequence
         $sql .= " ORDER BY tStamp DESC";
 
-        // Execute prepared query safely
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -154,7 +143,7 @@ elseif ($action === 'latest' && $method === 'GET') {
 // 4. ADMINISTRATIVE MANUAL RECORD INJECTION
 // ========================================================
 elseif ($action === 'create' && $method === 'POST') {
-    $distance = $inputData['distance'] ?? null;
+    $distance = $inputData['distance'] ?? $inputData['DISTANCE'] ?? null;
     
     if ($distance !== null) {
         $max_distance = 9.4;
@@ -162,11 +151,9 @@ elseif ($action === 'create' && $method === 'POST') {
         if ($water_level < 0) $water_level = 0;
         
         $scondition = "SAFE";
-        // UPDATED: SAFE is below 3.0, WARNING is 3.0 up to 4.0
         if ($water_level >= 2.0 && $water_level < 3.0) {
             $scondition = "WARNING";
         } 
-        // UPDATED: DANGER is 4.0 and above
         elseif ($water_level >= 3.0) {
             $scondition = "DANGER";
         }
@@ -174,7 +161,8 @@ elseif ($action === 'create' && $method === 'POST') {
         $barrier = ($scondition === "DANGER") ? 1 : 0;
         
         try {
-            $stmt = $pdo->prepare("INSERT INTO records (DISTANCE, water_level, barrier, scondition) VALUES (?, ?, ?, ?)");
+            // FIXED: Standardized lowercase distance column insertion
+            $stmt = $pdo->prepare("INSERT INTO records (distance, water_level, barrier, scondition) VALUES (?, ?, ?, ?)");
             $stmt->execute([$distance, $water_level, $barrier, $scondition]);
             echo json_encode(["status" => "success"]);
         } catch (PDOException $e) {
@@ -191,7 +179,7 @@ elseif ($action === 'create' && $method === 'POST') {
 // ========================================================
 elseif ($action === 'update' && $method === 'POST') {
     $id = $inputData['id'] ?? null;
-    $distance = $inputData['distance'] ?? null;
+    $distance = $inputData['distance'] ?? $inputData['DISTANCE'] ?? null;
     
     if ($id !== null && $distance !== null) {
         $max_distance = 9.4;
@@ -199,11 +187,9 @@ elseif ($action === 'update' && $method === 'POST') {
         if ($water_level < 0) $water_level = 0;
         
         $scondition = "SAFE";
-        // UPDATED: SAFE is below 3.0, WARNING is 3.0 up to 4.0
         if ($water_level >= 2.0 && $water_level < 3.0) {
             $scondition = "WARNING";
         } 
-        // UPDATED: DANGER is 4.0 and above
         elseif ($water_level >= 3.0) {
             $scondition = "DANGER";
         }
@@ -211,7 +197,8 @@ elseif ($action === 'update' && $method === 'POST') {
         $barrier = ($scondition === "DANGER") ? 1 : 0;
         
         try {
-            $stmt = $pdo->prepare("UPDATE records SET DISTANCE = ?, water_level = ?, barrier = ?, scondition = ? WHERE id = ?");
+            // FIXED: Standardized lowercase distance update column constraint
+            $stmt = $pdo->prepare("UPDATE records SET distance = ?, water_level = ?, barrier = ?, scondition = ? WHERE id = ?");
             $stmt->execute([$distance, $water_level, $barrier, $scondition, $id]);
             echo json_encode(["status" => "success"]);
         } catch (PDOException $e) {
